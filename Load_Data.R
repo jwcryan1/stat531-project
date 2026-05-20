@@ -1,0 +1,129 @@
+#STAT 531 Project Recharge Lag Analysis 
+
+#packages
+
+```{r}
+library(tidyverse)
+library(here) #found this to easier input files
+library(janitor)
+library(lubridate)
+
+```
+
+
+```{r}
+abd_well_data <- here("data", "abdwell032025-05082026(in).csv")
+cpabd_well_data <- here("data", "cp-abd1-11122025-05082026(in).csv")
+cimis_precip_data <- here("data", "CIMIS_01012025_05152026.csv")
+
+#ensuring the file is in the correct pathway 
+
+stopifnot(
+  "ABD file missing — check data/ folder"   = file.exists(abd_well_data),
+  "CPABD file missing — check data/ folder" = file.exists(cpabd_well_data),
+  "CIMIS file missing — check data/ folder" = file.exists(cimis_precip_data)
+)
+
+```
+
+#cleaning just meta data out of the way to load
+
+```{r}
+
+clean_start_data <- function(path) {
+  
+  # finding where the data starts 
+  all_lines <- read_lines(path)
+  header_line <- which(str_detect(all_lines, "^Rec #"))
+  
+  if (length(header_line) != 1) {
+    stop("Couldn't find header row in ", basename(path))
+  }
+  
+  site_label <- basename(path) |>
+    str_remove("[0-9].*$") |>
+    str_remove_all("[-_]") |>
+    str_to_upper()
+  
+  raw <- read_csv(
+    path,
+    skip = header_line - 1,
+    locale = locale(encoding = "latin1"),
+    show_col_types = FALSE
+  ) |>
+    clean_names()
+  
+  out <- raw |>
+    transmute(
+      site        = site_label,
+      timestamp   = mdy_hm(date_time),
+      temperature = temperature_c,
+      pressure    = pressure_psi
+    )
+  
+  # Optional columns since only abd well has this data 
+  if ("conductivity_m_s_cm" %in% names(raw)) {
+    out$conductivity <- raw$conductivity_m_s_cm
+  }
+  if ("salinity_psu" %in% names(raw)) {
+    out$salinity <- raw$salinity_psu
+  }
+  if ("tds_mg_l" %in% names(raw)) {
+    out$tds <- raw$tds_mg_l
+  }
+  
+  out |>
+    filter(!is.na(timestamp))
+}
+```
+
+#loading in both wells
+```{r}
+wells <- map_dfr(
+  c(abd_well_data, cpabd_well_data),
+  clean_start_data
+)
+
+```
+
+#loading CIMIS data 
+
+```{r}
+
+cimis <- read_csv(cimis_precip_data, show_col_types = FALSE)|>
+  clean_names()|>
+  mutate(
+    hour_str = str_pad(hour_pst, width = 4, side = "left", pad = "0"),
+    timestamp = mdy_hm(paste(date, hour_str)),
+  )|>
+  select(
+    timestamp, 
+    precip_mm = precip_mm, 
+    eto_mm = e_to_mm, 
+    air_temp_c = air_temp_c
+    
+  )|>
+  filter(!is.na(timestamp))
+
+```
+#verifying it loads correctly 
+
+```{r}
+cat("WELLS LOADED:\n") #found in the base R functions similar to print (could use either or)
+wells |>
+  group_by(site) |>
+  summarise(
+    n_obs = n(),
+    start = min(timestamp, na.rm = TRUE),
+    end   = max(timestamp, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  print()
+
+cat("\nCIMIS LOADED:\n")
+cat("  rows: ", nrow(cimis), "\n", sep = "")
+cat("  range:", format(min(cimis$timestamp, na.rm = TRUE)),
+    "to",      format(max(cimis$timestamp, na.rm = TRUE)), "\n")
+cat("  total precip (mm):", round(sum(cimis$precip_mm, na.rm = TRUE), 1), "\n")
+
+```
