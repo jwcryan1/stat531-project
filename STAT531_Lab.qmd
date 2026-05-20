@@ -1,0 +1,24 @@
+---
+title: "Lab: Recharge Lag-Time Series Analysis in Stenner Creek"
+author: "Lana Moore, Jack Cryan"
+format: html
+editor: visual
+---
+
+## Data Background
+
+## Loading Data 
+
+```{r}
+
+
+
+```
+
+
+
+```{r}
+
+```
+
+
