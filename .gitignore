@@ -1,0 +1,22 @@
+# R / RStudio
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+# Data — not committed (research embargo until Dec 2026)
+data/
+*.csv
+*.xlsx
+*.xls
+
+# Quarto / knitr outputs
+*_files/
+*_cache/
+/cache/
+*.html
+*.pdf
+
+# OS junk
+.DS_Store
+Thumbs.db
