@@ -1,24 +1,196 @@
 ---
 title: "Lab: Recharge Lag-Time Series Analysis in Stenner Creek"
 author: "Lana Moore, Jack Cryan"
-format: html
+format:
+  html:
+    toc: true
+    code-tools: true
+    embed-resources: true
 editor: visual
+execute:
+  warning: false
+  message: false
 ---
 
-## Data Background
+## Data Content
 
-## Loading Data 
+Within California's Central Coast, groundwater recharge are pivotal to managing water supply during drought periods and during increasingly variable climate conditions. When rainfall occurs the water that does infiltrate does not show in nearby wells immediately. There is a **lag** between a storm event and the resulting rise in groundwater from that event, and that lag helps us determine the hydrogeology of a site. Like how permeable the soil is, how deep a water table sits, and how connected the surface water is to groundwater.
+
+In this lab, you will be able to work with real monitoring data from two piezometers in the Stenner Creek watershed within San Luis Obispo, CA, along with hourly precipitation data from the CIMIS Weather Station (052). Your goal is to manage this messy, real world environmental dataset into a clean form and begin to characterize the relationship of rainfall to groundwater response at these two well sites.
+
+You will be working with three datasets:
+
+| Dataset | File | Interval | Variables of interest |
+|------------------|------------------|------------------|------------------|
+| ABD well | `abdwell032025-05082026(in).csv` | 15-minute | timestamp, pressure, temperature, conductivity, salinity, TDS |
+| CPABD well | `cp-abd1-11122025-05082026(in).csv` | 15-minute | timestamp, pressure, temperature |
+| CIMIS precipitation | `CIMIS_01012025_05152026.csv` | hourly | timestamp, precipitation (mm), reference ET, air temperature |
+
+The two wells use different smart sensors, which means only the *ABD well records for conductivity, salinity, and TDS*. Both of them record for pressure (psi) which is the variable we use as a proxy for groundwater levels. The raw export files typically have long metadata headers before the actual time-series data starts. Part of this lab will be dealing with that.
+
+CIMIS (California Irrigation Management Information System) Station 52 - San Luis Obispo provides hourly weather data including precipitation. CIMIS uses an idiosyncratic hour of day format (e.g 100 for 1:00 AM) that you will need to convert into proper timestamps.
+
+The three datasets cover different, but overlapping, time windows:
+
+-   ABD: March 20, 2025 -\> March 15, 2026
+-   CPABD: November 12, 2025 -\> May 8, 2026
+-   CIMIS: January 1, 2025 -\> May 16, 2026
+
+The common window where all three datasets have coverage is **November 12, 2025 to March 15, 2026**, which is the main months of California's wet season.
+
+## What you will do
+
+The lab will focus on four parts:
+
+1.  **Load and clean** the well files and CIMIS files including writing a cleaning function to reuse for the wells.
+2.  **Aggregate and join** the 15 minute well data to the hourly CIMIS data.
+3.  **Detect storm events** and **quantify lag recharge** between the precipitation and groundwater response.
+4.  **Quantify uncertainty** in the mean lag time using bootstrap simulation.
+
+## Load Packages
 
 ```{r}
+#| label: setup
+#| message: false
 
+library(tidyverse)
+library(here)
+library(janitor)
+library(lubridate)
+```
 
+## Part 1: Loading and Cleaning the Data
+
+### Step 1: Download the data
+
+Download the zipped data archive from the following link:
+
+> [**Download `stenner_recharge_data.zip`**](https://cpslo-my.sharepoint.com/:f:/g/personal/lmoore27_calpoly_edu/IgDFdhs1ThB7Tb8ps1tgk7bdAVwcLfLAkK_iPkvM-46hubY?e=IRmc2C)
+
+::: callout-note
+**You must be signed in with your Cal Poly Microsoft account to access this link.** The data comes from ongoing graduate research and is restricted to Cal Poly users only. If you see a "request access" prompt, make sure you are signed into OneDrive with your `@calpoly.edu` account, not a personal Microsoft account.
+:::
+
+### Step 2: Place the files in a `data/` folder
+
+Unzip the archive and place all three files in a folder called `data/` at the root of your R project (the same folder that contains your `.Rproj` file). Create the `data/` folder if it does not already exist.
+
+### Question 1
+
+We will be using the `here` package to construct the file paths to the three csv's within the `data/` folder then use the `file.exists()` to ensure all of the files are present.
+
+::: callout-tip
+The `stopifnot()` function takes named conditions in the form `"error message" = condition` and stops execution with the named message when a condition is `FALSE`. This is a useful pattern for "fail fast" validation at the top of a script.
+:::
+
+```{r}
+#| label: q1
+#| eval: false
+
+abd_path   <- here(_____)
+cpabd_path <- here(_____)
+cimis_path <- here(_____)
+
+stopifnot(
+  _____ = file.exists(abd_path),
+  _____ = file.exists(cpabd_path),
+  _____ = file.exists(cimis_path)
+)
+```
+
+### Question 2
+
+CIMIS stores the hour-of-day as an integer in `HHMM` format (`100` means 1:00 AM, `1000` means 10:00 AM, `2300` means 11:00 PM), and the date is stored separately.
+
+Load the CIMIS data and create a single `timestamp` column by combining the date and hour. Keep only the columns `timestamp`, `precip_mm` (precipitation, mm), `eto_mm` (reference evapotranspiration, mm), and `air_temp_c` (air temperature, °C). Drop rows where the timestamp failed to parse.
+
+```{r}
+#| label: q2-a
+#| eval: false
+
+cimis <- read_csv(cimis_path, show_col_types = FALSE) |>
+  clean_names() |>
+  mutate(
+    hour_str  = _____,
+    timestamp = _____
+  ) |>
+  select(
+    timestamp,
+    precip_mm,
+    eto_mm     = _____,
+    air_temp_c = _____
+  ) |>
+  filter(_____)
+```
+
+After loading, using base R functions, report the **total precipitation (mm)** recorded over the entire period and the **date range**.
+
+```{r}
+#| label: q2-b
+#| eval: false
+
+# Total precipitation (mm)
+total_precip <- _____
+total_precip
+
+# Date range of the CIMIS record
+cimis_range <- _____
+cimis_range
+```
+
+### Question 3
+
+Both wells were exported with different smart sensor loggers as mentioned earlier. The resulting files have **different lengths of metadata headers** and **different sets of variables**.
+
+Write a function that takes the path of any well csv and returns a clean tibble with the following requirements:
+
+a.  **Auto-detect** where the metadata ends and the time-series data begins. The actual data header in a sensor export always begins with literal text `Rec #`. Use `read_lines()` and `stringr::str_detect()` to find the line number of that header, then pass the correct `skip` value to `read_csv()`.
+
+b.  **Add a `site` column** derived from the filename (e.g. `"ABDWELL"` for `abdwell032025-05082026(in).csv`).
+
+c.  **Always return** the columns `site`, `timestamp` (parsed), `temperature`, and `pressure`. These are present in every sensor export.
+
+d.  **Conditionally return** the columns `conductivity`, `salinity`, and `tds` — these are only present in the ABD export. The function should check whether each column exists in the raw file and add it to the output only if it does.
+
+e.  **Drop rows** with unparseable timestamps.
+
+```{r}
+#| label: q3-function
+#| eval: false
+
+# Your function here
 
 ```
 
-
+Once your function works, use `purrr::map_dfr()` to apply it to both well files, producing a combined `wells` tibble. Verify the result by reporting the number of observations and the date range for each site:
 
 ```{r}
+#| label: q3-verify
+#| eval: false
+
+# Apply function to both files and verify
 
 ```
 
+## References
 
+### R packages
+
+-   Wickham H. et al. (2019). Welcome to the tidyverse. *Journal of Open Source Software*, 4(43), 1686. <https://doi.org/10.21105/joss.01686>
+-   Müller K. (2020). *here: A Simpler Way to Find Your Files.* R package. <https://here.r-lib.org/>
+-   Firke S. (2023). *janitor: Simple Tools for Examining and Cleaning Dirty Data.* R package. <https://github.com/sfirke/janitor>
+-   Grolemund G. and Wickham H. (2011). Dates and Times Made Easy with lubridate. *Journal of Statistical Software*, 40(3), 1–25. <https://doi.org/10.18637/jss.v040.i03>
+
+### Background reading
+
+-   Healy R. W. (2010). *Estimating Groundwater Recharge.* Cambridge University Press. Reference for the conceptual framing of precipitation-to-recharge lag.
+
+### AI Use 
+
+Portions of this lab were developed with assistance from Claude. Specifically:
+
+- **Data description table formatting.** Claude suggested the Markdown table syntax in the "Data Content" section for presenting the three datasets, their file names, sampling intervals, and variables of interest. Prompt: "How would I format a table for these three csv files and their variables?"
+- **Quarto callout blocks.** Claude provided the syntax and structure for the `:::` callout-note and callout-tip blocks used throughout the lab (e.g., the Cal Poly authentication note in the data download section and the `stopifnot()` tip in Question 1). Prompt: "How to properly integrate a call out or advice block"
+- **OneDrive download link integration.** Claude advised on the Markdown link syntax used to embed the OneDrive download URL for `stenner_recharge_data.zip` and on framing the access-restriction warning. Prompt: "Is there a way to embed a onedrive link into a qmd and what are the restrictions to that?"
+
+All R code, analysis design, and decisions were authored by Lana Moore and Jack Cryan. 
