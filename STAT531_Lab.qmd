@@ -32,9 +32,9 @@ CIMIS (California Irrigation Management Information System) Station 52 - San Lui
 
 The three datasets cover different, but overlapping, time windows:
 
--   ABD: March 20, 2025 -\> March 15, 2026
--   CPABD: November 12, 2025 -\> May 8, 2026
--   CIMIS: January 1, 2025 -\> May 16, 2026
+- ABD: March 20, 2025 -\> March 15, 2026
+- CPABD: November 12, 2025 -\> May 8, 2026
+- CIMIS: January 1, 2025 -\> May 16, 2026
 
 The common window where all three datasets have coverage is **November 12, 2025 to March 15, 2026**, which is the main months of California's wet season.
 
@@ -100,7 +100,7 @@ stopifnot(
 
 ### Question 2
 
-CIMIS stores the hour-of-day as an integer in `HHMM` format (`100` means 1:00 AM, `1000` means 10:00 AM, `2300` means 11:00 PM), and the date is stored separately.
+CIMIS stores the hour-of-day as an integer in the hour-hour minute-minute (`HHMM`) format (`100` means 1:00 AM, `1000` means 10:00 AM, `2300` means 11:00 PM), and the date is stored separately.
 
 Load the CIMIS data and create a single `timestamp` column by combining the date and hour. Keep only the columns `timestamp`, `precip_mm` (precipitation, mm), `eto_mm` (reference evapotranspiration, mm), and `air_temp_c` (air temperature, °C). Drop rows where the timestamp failed to parse.
 
@@ -172,20 +172,22 @@ Once your function works, use `purrr::map_dfr()` to apply it to both well files,
 
 ```
 
+### Question 4
+
 ## References
 
 ### R packages
 
--   Wickham H. et al. (2019). Welcome to the tidyverse. *Journal of Open Source Software*, 4(43), 1686. <https://doi.org/10.21105/joss.01686>
--   Müller K. (2020). *here: A Simpler Way to Find Your Files.* R package. <https://here.r-lib.org/>
--   Firke S. (2023). *janitor: Simple Tools for Examining and Cleaning Dirty Data.* R package. <https://github.com/sfirke/janitor>
--   Grolemund G. and Wickham H. (2011). Dates and Times Made Easy with lubridate. *Journal of Statistical Software*, 40(3), 1–25. <https://doi.org/10.18637/jss.v040.i03>
+- Wickham H. et al. (2019). Welcome to the tidyverse. *Journal of Open Source Software*, 4(43), 1686. <https://doi.org/10.21105/joss.01686>
+- Müller K. (2020). *here: A Simpler Way to Find Your Files.* R package. <https://here.r-lib.org/>
+- Firke S. (2023). *janitor: Simple Tools for Examining and Cleaning Dirty Data.* R package. <https://github.com/sfirke/janitor>
+- Grolemund G. and Wickham H. (2011). Dates and Times Made Easy with lubridate. *Journal of Statistical Software*, 40(3), 1–25. <https://doi.org/10.18637/jss.v040.i03>
 
 ### Background reading
 
--   Healy R. W. (2010). *Estimating Groundwater Recharge.* Cambridge University Press. Reference for the conceptual framing of precipitation-to-recharge lag.
+- Healy R. W. (2010). *Estimating Groundwater Recharge.* Cambridge University Press. Reference for the conceptual framing of precipitation-to-recharge lag.
 
-### AI Use 
+### AI Use
 
 Portions of this lab were developed with assistance from Claude. Specifically:
 
@@ -193,4 +195,4 @@ Portions of this lab were developed with assistance from Claude. Specifically:
 - **Quarto callout blocks.** Claude provided the syntax and structure for the `:::` callout-note and callout-tip blocks used throughout the lab (e.g., the Cal Poly authentication note in the data download section and the `stopifnot()` tip in Question 1). Prompt: "How to properly integrate a call out or advice block"
 - **OneDrive download link integration.** Claude advised on the Markdown link syntax used to embed the OneDrive download URL for `stenner_recharge_data.zip` and on framing the access-restriction warning. Prompt: "Is there a way to embed a onedrive link into a qmd and what are the restrictions to that?"
 
-All R code, analysis design, and decisions were authored by Lana Moore and Jack Cryan. 
+All R code, analysis design, and decisions were authored by Lana Moore and Jack Cryan.
