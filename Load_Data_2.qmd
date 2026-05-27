@@ -4,9 +4,9 @@ format: html
 editor: visual
 ---
 
-#STAT 531 Project Recharge Lag Analysis
+## STAT 531 Project Recharge Lag Analysis
 
-#packages
+## packages
 
 ```{r}
 library(tidyverse) 
@@ -29,7 +29,7 @@ stopifnot(
 
 ```
 
-#cleaning just meta data out of the way to load
+### cleaning just meta data out of the way to load
 
 ```{r}
 clean_start_data <- function(path) { 
@@ -81,7 +81,7 @@ clean_start_data <- function(path) {
 
 ```
 
-#loading in both wells
+### loading in both wells
 
 ```{r}
 wells <- map_dfr(
@@ -89,7 +89,7 @@ wells <- map_dfr(
   clean_start_data ) 
 ```
 
-#loading CIMIS data
+### loading CIMIS data
 
 ```{r}
 cimis <- read_csv(cimis_precip_data, show_col_types = FALSE)|>
@@ -109,7 +109,7 @@ cimis <- read_csv(cimis_precip_data, show_col_types = FALSE)|>
   filter(!is.na(timestamp)) 
 ```
 
-#verifying it loads correctly
+### verifying it loads correctly
 
 ```{r}
 
