@@ -57,6 +57,7 @@ library(tidyverse)
 library(here)
 library(janitor)
 library(lubridate)
+library(knitr)
 ```
 
 ## Part 1: Loading and Cleaning the Data
@@ -174,11 +175,54 @@ Once your function works, use `purrr::map_dfr()` to apply it to both well files,
 
 ### Question 4
 
-Question about matching time intervals -\>
+As we have seen before, our datasets aren't always clean and easy to use with each other. Take a look at the `cimis` and `wells` datasets, and notice that the `timestamp` columns are not in the same format.
 
-intervals are at 15 mins or 1 hour, how to combine
+While the `timestamp` columns are in the same `ymd_hms` format, the observations in the `cimis` dataset are recorded **every hour**, and observations in the `wells` dataset are recorded **every 15-minutes**.
 
-ggplotting this data
+Write a code to make the datasets compatible with each other by **adjusting the time-stamps to an hourly format** and demonstrate that your fix worked using `kable()`.
+
+::: callout-tip
+Tip: Use the `lubridate` package to change the time-interval. Look at the "round date-times" section. Group by your non-numeric variables, then use `summarise()` on the rest.
+:::
+
+```{r}
+#| label: q4-a
+#| eval: false
+
+wells <- wells |>
+  mutate(timestamp = floor_date(timestamp, unit = "hour")) |>
+  group_by(timestamp, site) |>
+  summarise(across(everything(), mean))
+
+wells |>
+  head(n = 5) |>
+  kable ()
+
+```
+
+### Question 5
+
+Now that our datasets are on the same time-scale, they are compatible with each other, and can be joined.
+
+a.  Join the datasets by their common variable
+
+b.  Both datasets share a temperature variable. Rename them to specify air temperature and well temperature.
+
+```{r}
+#| label: q4-b
+#| eval: false
+
+water_data <- wells |>
+  left_join(cimis, by = "timestamp") |>
+  rename(well_temp_c = temperature)
+
+```
+
+### Question 6
+
+ggplotting this data -\> throw a linear regression over it
+
+What variables to use? timestamp on the x, facet by well.
 
 ## References
 
