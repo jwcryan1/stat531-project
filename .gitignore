@@ -71,7 +71,14 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+<<<<<<< Updated upstream
 >>>>>>> 837a8ab5b1fd4b29ccaa9aae6f876ad26b5f2cd4
 .positai
 =======
 >>>>>>> 4bac7f2f3c42f24ba1a7e33a25ef273cd059859d
+=======
+.positai
+
+*.Rproj
+*.html
+>>>>>>> Stashed changes

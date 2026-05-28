@@ -1,0 +1,41 @@
+---
+title: "STAT531 Project"
+subtitle: "Jack Cryan and Lana Moore"
+format: 
+  html:
+    toc: true
+    embed-resources: true
+editor: visual
+execute: 
+  error: true
+  echo: true
+  message: false
+  warning: false
+---
+
+## Setup
+
+```{r}
+library(tidyverse)
+library(knitr)
+```
+
+## Reading in the data:
+
+```{r}
+
+url("https://raw.githubusercontent.com/manncz/stat-331-s25/main/labs/lab5/data/bCH_murder_data.Rdata") |> 
+  load()
+
+# We should probably use something like this ^
+
+
+
+childcare_costs <- read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-05-09/childcare_costs.csv')
+
+counties <- read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-05-09/counties.csv')
+
+tax_rev <- read_csv('https://raw.githubusercontent.com/manncz/stat-331-s25/main/labs/lab4/data/ca_tax_revenue.csv')
+
+# Or this style ^
+```

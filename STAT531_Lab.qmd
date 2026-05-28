@@ -186,7 +186,7 @@ Tip: Use the `lubridate` package to change the time-interval. Look at the "round
 :::
 
 ```{r}
-#| label: q4-a
+#| label: q4
 #| eval: false
 
 wells <- wells |>
@@ -202,27 +202,58 @@ wells |>
 
 ### Question 5
 
-Now that our datasets are on the same time-scale, they are compatible with each other, and can be joined.
+Now that our datasets are on the same time-scale, they are compatible with each other, and can be joined. Lets do a couple of small cleaning tasks with the new dataset we're going to make.
 
 a.  Join the datasets by their common variable
 
 b.  Both datasets share a temperature variable. Rename them to specify air temperature and well temperature.
 
+c.  Create a new column `gw_level` by multiplying all observations in the pressure column by 2.31 to get the groundwater level in feet.
+
 ```{r}
-#| label: q4-b
+#| label: q5
 #| eval: false
 
 water_data <- wells |>
   left_join(cimis, by = "timestamp") |>
-  rename(well_temp_c = temperature)
+  rename(well_temp_c = temperature) |>
+  mutate(gw_level = pressure * 2.31)
 
 ```
 
 ### Question 6
 
-ggplotting this data -\> throw a linear regression over it
+Now that we have our cleaned and joined dataset, let's plot the data and see what we can find!
 
-What variables to use? timestamp on the x, facet by well.
+Create a well-formatted graph in `ggplot` that:
+
+- Displays the time on the x-axis
+- Compares groundwater and precipitation using different colors
+- Creates separate plots for each site
+- Utilizes dual y-axis to show `gw_level` and `precipitation` on each side of the chart.
+- Has appropriate titles for the chart and axis
+
+```{r}
+#| label: q6-plot
+#| eval: false
+
+ggplot(data = water_data, aes(x = timestamp)) +
+  geom_line(aes(y = gw_level), color = "springgreen3") +
+  geom_line(aes(y = precip_mm), color = "steelblue") +
+  facet_wrap(~site) +
+  scale_y_continuous(name = "Groundwater Level (ft)",
+                     sec.axis = sec_axis(trans = ~./10,
+                                         breaks = c(0, 0.25, 0.50, 0.75, 1.00, 1.25),
+                                         name = "Precipitation (mm)")) +
+  theme(axis.title.y = element_text(color = "springgreen3"),
+        axis.text.y = element_text(color = "springgreen3"),
+        axis.title.y.right = element_text(color = "steelblue"),
+        axis.text.y.right = element_text(color = "steelblue")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Precipitation and Groundwater Levels at the ABD and CPABD Wells",
+       x = "Timestamp")
+  
+```
 
 ## References
 
@@ -232,6 +263,10 @@ What variables to use? timestamp on the x, facet by well.
 - Müller K. (2020). *here: A Simpler Way to Find Your Files.* R package. <https://here.r-lib.org/>
 - Firke S. (2023). *janitor: Simple Tools for Examining and Cleaning Dirty Data.* R package. <https://github.com/sfirke/janitor>
 - Grolemund G. and Wickham H. (2011). Dates and Times Made Easy with lubridate. *Journal of Statistical Software*, 40(3), 1–25. <https://doi.org/10.18637/jss.v040.i03>
+
+### Other Sources
+
+- Data Analytic. (2022). *When to use double axis for better visualization of dates in GGPLOT charts*. <https://www.youtube.com/watch?v=e9IcAEaxDB4&list=WL&index=83>
 
 ### Background reading
 
