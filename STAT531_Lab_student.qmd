@@ -12,7 +12,7 @@ execute:
   message: false
 ---
 
-## Data Content
+### Data Content
 
 Within California's Central Coast, groundwater recharge are pivotal to managing water supply during drought periods and during increasingly variable climate conditions. When rainfall occurs the water that does infiltrate does not show in nearby wells immediately. There is a **lag** between a storm event and the resulting rise in groundwater from that event, and that lag helps us determine the hydrogeology of a site. Like how permeable the soil is, how deep a water table sits, and how connected the surface water is to groundwater.
 
@@ -38,7 +38,7 @@ The three datasets cover different, but overlapping, time windows:
 
 The common window where all three datasets have coverage is **November 12, 2025 to March 15, 2026**, which is the main months of California's wet season.
 
-## What you will do
+### What you will do
 
 The lab will consist of four parts:
 
@@ -47,11 +47,10 @@ The lab will consist of four parts:
 3.  **Detect storm events** and **quantify lag recharge** between the precipitation and groundwater response.
 4.  **Quantify uncertainty** in the mean lag time using bootstrap simulation.
 
-## Load Packages
+### Load Packages
 
 ```{r}
 #| label: setup
-#| message: false
 
 library(tidyverse)
 library(here)
@@ -87,7 +86,6 @@ The `stopifnot()` function takes named conditions in the form `"error message" =
 
 ```{r}
 #| label: q1
-#| eval: false
 
 abd_well_data <- here(___)
 cpabd_well_data <- here(___)
@@ -122,7 +120,6 @@ After loading, using base R functions, report the **total precipitation (mm)** r
 
 ```{r}
 #| label: q2-b
-#| eval: false
 
 # Total precipitation (mm)
 
@@ -148,7 +145,6 @@ e.  **Drop rows** with unparseable timestamps.
 
 ```{r}
 #| label: q3-a function
-#| eval: false
 
 clean_start_data <- function(path) { 
   
@@ -199,7 +195,6 @@ Create a `wells` dataset that combines `abd_well_data` and `cpabd_well_data` usi
 
 ```{r}
 #| label: q3-b
-#| message: false
 
 
 ```
@@ -208,7 +203,6 @@ Verify the result by reporting the amount of observations at each well site and 
 
 ```{r}
 #| label: q3 verify
-#| eval: false
 
 # Apply function to both files and verify
 
@@ -248,7 +242,6 @@ Tip: Use the `lubridate` package to change the time-interval. Look at the "round
 
 ```{r}
 #| label: q4
-#| eval: false
 
 # Code for q4
 
@@ -266,11 +259,12 @@ c.  Create a new column `gw_level_ft` by multiplying all observations in the pre
 
 ```{r}
 #| label: q5
-#| eval: false
 
 # Code for q5
 
 ```
+
+## Part 2: Data Analysis
 
 ### Question 6
 
@@ -286,7 +280,6 @@ Create a well-formatted graph in `ggplot` that:
 
 ```{r}
 #| label: q6-plot
-#| eval: false
 
 # Setup for ggplot
 
@@ -332,7 +325,7 @@ ggplot(___) +
 
 In 3–4 sentences underneath your plot, describe what you see. Do precipitation events appear to coincide with rises in well pressure? Are both wells equally responsive, or does one appear to respond faster or more strongly than the other?
 
-## Question 7
+### Question 7
 
 Since only the **ABD well** records water quality variables (conductivity, salinity, TDS), build a summary table of water quality at that site.
 
@@ -340,13 +333,12 @@ Using `kable` and `kableExtra`, create a single summary table showing the **mean
 
 ```{r}
 #| label: q7-summary
-#| eval: false
 
 # Code for q7
 
 ```
 
-## Question 8
+### Question 8
 
 To compute recharge lag-times, you first need to identify **discrete storm events** in the continuous precipitation record. A storm event is a contiguous period of measurable precipitation, separated from other storms by a minimum number of dry hours.
 
@@ -373,7 +365,6 @@ A clean way to detect contiguous events is to flag wet hours, compute the gap si
 ```{r}
 
 #| label: q8-storm events
-#| eval: false
 
 find_storm_events <- function(precip_df, threshold_mm, min_gap_hours) {
  
@@ -394,7 +385,7 @@ storms |>
 
 ```
 
-## Question 9
+### Question 9
 
 For each storm event identified in Question 8, we will compute the **recharge lag-time** at each well. Recharge lag-time is the number of hours between the storm's precipitation and the subsequent peak in groundwater pressure.
 
@@ -406,7 +397,6 @@ Run the function below, then make a scatter plot of `lag_hours` (y) against `tot
 
 ```{r}
 #| label: q9-function
-#| eval: false
 
 compute_lag <- function(storm, well_data, cimis, search_hours = 72) {
   
@@ -474,7 +464,6 @@ lag_results <- expand_grid(
 
 ```{r}
 #| label: q9-graph
-#| eval: false
 
 # Scatter plot 
 ggplot(lag_results, aes(x = total_precip_mm, y = lag_hours)) +
