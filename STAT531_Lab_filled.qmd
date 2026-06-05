@@ -1,0 +1,574 @@
+---
+title: "Lab: Recharge Lag-Time Series Analysis in Stenner Creek"
+author: "Lana Moore, Jack Cryan"
+format:
+  html:
+    toc: true
+    code-tools: true
+    embed-resources: true
+editor: visual
+execute:
+  warning: false
+  message: false
+---
+
+## Data Content
+
+Within California's Central Coast, groundwater recharge are pivotal to managing water supply during drought periods and during increasingly variable climate conditions. When rainfall occurs the water that does infiltrate does not show in nearby wells immediately. There is a **lag** between a storm event and the resulting rise in groundwater from that event, and that lag helps us determine the hydrogeology of a site. Like how permeable the soil is, how deep a water table sits, and how connected the surface water is to groundwater.
+
+In this lab, you will be able to work with real monitoring data from two piezometers in the Stenner Creek watershed within San Luis Obispo, CA, along with hourly precipitation data from the CIMIS Weather Station (052). Your goal is to manage this messy, real world environmental dataset into a clean form and begin to characterize the relationship of rainfall to groundwater response at these two well sites.
+
+You will be working with three datasets:
+
+| Dataset | File | Interval | Variables of interest |
+|------------------|------------------|------------------|------------------|
+| ABD well | `abdwell032025-05082026(in).csv` | 15-minute | timestamp, pressure, temperature, conductivity, salinity, TDS |
+| CPABD well | `cp-abd1-11122025-05082026(in).csv` | 15-minute | timestamp, pressure, temperature |
+| CIMIS precipitation | `CIMIS_01012025_05152026.csv` | hourly | timestamp, precipitation (mm), reference ET, air temperature |
+
+The two wells use different smart sensors, which means only the *ABD well records for conductivity, salinity, and TDS*. Both of them record for pressure (psi) which is the variable we use as a proxy for groundwater levels. The raw export files typically have long metadata headers before the actual time-series data starts. Part of this lab will be dealing with that.
+
+CIMIS (California Irrigation Management Information System) Station 52 - San Luis Obispo provides hourly weather data including precipitation. CIMIS uses an idiosyncratic hour of day format (e.g 100 for 1:00 AM) that you will need to convert into proper timestamps.
+
+The three datasets cover different, but overlapping, time windows:
+
+- ABD: March 20, 2025 -\> March 15, 2026
+- CPABD: November 12, 2025 -\> May 8, 2026
+- CIMIS: January 1, 2025 -\> May 16, 2026
+
+The common window where all three datasets have coverage is **November 12, 2025 to March 15, 2026**, which is the main months of California's wet season.
+
+## What you will do
+
+The lab will consist of four parts:
+
+1.  **Load and clean** the well files and CIMIS files including writing a cleaning function to reuse for the wells.
+2.  **Aggregate and join** the 15 minute well data to the hourly CIMIS data.
+3.  **Detect storm events** and **quantify lag recharge** between the precipitation and groundwater response.
+4.  **Quantify uncertainty** in the mean lag time using bootstrap simulation.
+
+## Load Packages
+
+```{r}
+#| label: setup
+#| message: false
+
+library(tidyverse)
+library(here)
+library(janitor)
+library(lubridate)
+library(knitr)
+library(kableExtra)
+```
+
+## Part 1: Loading and Cleaning the Data
+
+### Step 1: Download the data
+
+Download the zipped data archive from the following link:
+
+> [**Download `stenner_recharge_data.zip`**](https://cpslo-my.sharepoint.com/:f:/g/personal/lmoore27_calpoly_edu/IgDFdhs1ThB7Tb8ps1tgk7bdAVwcLfLAkK_iPkvM-46hubY?e=IRmc2C)
+
+::: callout-note
+**You must be signed in with your Cal Poly Microsoft account to access this link.** The data comes from ongoing graduate research and is restricted to Cal Poly users only. If you see a "request access" prompt, make sure you are signed into OneDrive with your `@calpoly.edu` account, not a personal Microsoft account.
+:::
+
+### Step 2: Place the files in a `data/` folder
+
+Unzip the archive and place all three files in a folder called `data/` at the root of your R project (the same folder that contains your `.Rproj` file). Create the `data/` folder if it does not already exist.
+
+### Question 1
+
+We will be using the `here` package to construct the file paths to the three .csv files within the `data/` folder then use the `file.exists()` to ensure all of the files are present.
+
+::: callout-tip
+The `stopifnot()` function takes named conditions in the form `"error message" = condition` and stops execution with the named message when a condition is `FALSE`. This is a useful pattern for "fail fast" validation at the top of a script.
+:::
+
+```{r}
+#| label: q1
+#| eval: false
+
+abd_well_data <- here("data", "abdwell032025-05082026(in).csv")
+cpabd_well_data <- here("data", "cp-abd1-11122025-05082026(in).csv")
+cimis_precip_data <- here("data", "CIMIS_01012025_05152026.csv")
+
+stopifnot(
+  "ABD file missing — check data/ folder"   = file.exists(abd_well_data),
+  "CPABD file missing — check data/ folder" = file.exists(cpabd_well_data),
+  "CIMIS file missing — check data/ folder" = file.exists(cimis_precip_data))
+```
+
+### Question 2
+
+CIMIS stores the hour-of-day as an integer in the hour-hour minute-minute (`HHMM`) format (`100` means 1:00 AM, `1000` means 10:00 AM, `2300` means 11:00 PM), and the date is stored separately.
+
+Load the CIMIS data and create a single `timestamp` column by combining the date and hour. Keep only the columns `timestamp`, `precip_mm` (precipitation, mm), `eto_mm` (reference evapotranspiration, mm), and `air_temp_c` (air temperature, °C). Drop rows where the timestamp failed to parse.
+
+```{r}
+#| label: q2-a
+#| eval: false
+
+cimis <- read_csv(cimis_precip_data, show_col_types = FALSE)|>
+  clean_names()|>
+  mutate(
+    hour_str = str_pad(hour_pst, width = 4, side = "left", pad = "0"),     
+    timestamp = mdy_hm(paste(date, hour_str)),
+    )|>   
+  
+  select(
+    timestamp,
+    precip_mm = precip_mm,
+    eto_mm = e_to_mm,
+    air_temp_c = air_temp_c
+    )|>   
+  
+  filter(!is.na(timestamp))
+
+```
+
+After loading, using base R functions, report the **total precipitation (mm)** recorded over the entire period and the **date range**.
+
+```{r}
+#| label: q2-b
+#| eval: false
+
+# Total precipitation (mm)
+sum(cimis$precip_mm, na.rm = T)
+
+# Date range of the CIMIS record
+range(cimis$timestamp, na.rm = T)
+```
+
+### Question 3
+
+Both wells were exported with different smart sensor loggers as mentioned earlier. The resulting files have **different lengths of metadata headers** and **different sets of variables**.
+
+Complete the function named `clean_start_data` that takes the path of any well csv and returns a clean tibble with the following requirements:
+
+a.  **Auto-detect** where the metadata ends and the time-series data begins. The actual data header in a sensor export always begins with literal text `Rec #`. Use `read_lines()` and `stringr::str_detect()` to find the line number of that header, then pass the correct `skip` value to `read_csv()`.
+
+b.  **Add a `site` column** derived from the filename (e.g. `"ABDWELL"` for `abdwell032025-05082026(in).csv`).
+
+c.  **Always return** the columns `site`, `timestamp` (parsed), `temperature`, and `pressure`. These are present in every sensor export.
+
+d.  **Conditionally return** the columns `conductivity`, `salinity`, and `tds` — these are only present in the ABD export. The function should check whether each column exists in the raw file and add it to the output only if it does.
+
+e.  **Drop rows** with unparseable timestamps.
+
+```{r}
+#| label: q3a-function
+#| eval: false
+
+clean_start_data <- function(path) { 
+  
+  # finding where the data starts
+  all_lines <- read_lines(path)
+  header_line <- which(str_detect(all_lines, "^Rec #"))
+  
+  if (length(header_line) != 1) {
+    stop("Couldn't find header row in ", basename(path))   
+  }      
+  
+  site_label <- basename(path) |>
+    str_remove("[0-9].*$") |>     
+    str_remove_all("[-_]") |>     
+    str_to_upper()      
+  
+  raw <- read_csv(
+    path,
+    skip = header_line - 1,
+    locale = locale(encoding = "latin1"),
+    show_col_types = FALSE   
+  ) |>     
+    clean_names()      
+  
+  out <- raw |>     
+    transmute(       
+      site        = site_label,
+      timestamp   = mdy_hm(date_time),
+      temperature = temperature_c,
+      pressure    = pressure_psi
+    )      
+
+  if ("conductivity_m_s_cm" %in% names(raw)) {
+    out$conductivity <- raw$conductivity_m_s_cm
+  }   
+  
+  if ("salinity_psu" %in% names(raw)) {
+    out$salinity <- raw$salinity_psu
+  }   
+  
+  if ("tds_mg_l" %in% names(raw)) {
+    out$tds <- raw$tds_mg_l
+  }      
+  
+  out |>     
+    filter(!is.na(timestamp)) 
+  }
+
+```
+
+Create a `wells` dataset that combines `abd_well_data` and `cpabd_well_data` using the `clean_start_data` function you created.
+
+```{r}
+#| label: q3b
+#| message: false
+
+wells <- map_dfr(c(abd_well_data, cpabd_well_data), clean_start_data)
+```
+
+Once your function works, use `purrr::map_dfr()` to apply it to both well files, producing a combined `wells` tibble. Verify the result by reporting the amount of observations at each well site and the date range in the wells dataset, and the amount of observations in the CIMIS dataset and the date range. Does it seem like the datasets have loaded correctly?
+
+```{r}
+#| label: q3-verify
+#| eval: false
+
+# Apply function to both files and verify
+
+cat("WELLS LOADED:\n")
+
+wells |>   group_by(site) |>
+  summarise(
+    n_obs = n(),
+    start = min(timestamp, na.rm = TRUE),
+    end   = max(timestamp, na.rm = TRUE),
+    .groups = "drop"
+    ) |>
+  
+  print()  
+
+cat("\nCIMIS LOADED:\n") 
+cat("  rows: ", nrow(cimis), "\n", sep = "") 
+cat("  range:", format(min(cimis$timestamp, na.rm = TRUE)),
+    "to",      format(max(cimis$timestamp, na.rm = TRUE)), "\n") 
+cat("  total precip (mm):", round(sum(cimis$precip_mm, na.rm = TRUE), 1), "\n") 
+
+```
+
+(This is to verify all observations are being counted within the data so there is no breaks either data set).
+
+### Question 4
+
+As we have seen before, our datasets aren't always clean and easy to use with each other. Take a look at the `cimis` and `wells` datasets, and notice that the `timestamp` columns are not in the same format.
+
+While the `timestamp` columns are in the same `ymd_hms` format, the observations in the `cimis` dataset are recorded **every hour**, and observations in the `wells` dataset are recorded **every 15-minutes**.
+
+Write a code to make the datasets compatible with each other by **adjusting the time-stamps to an hourly format** and demonstrate that your fix worked by using `kable()` to print the first five observations.
+
+::: callout-tip
+Tip: Use the `lubridate` package to change the time-interval. Look at the "round date-times" section. Group by your non-numeric variables, then use `summarise()` on the rest.
+:::
+
+```{r}
+#| label: q4
+#| eval: false
+
+wells <- wells |>
+  mutate(timestamp = floor_date(timestamp, unit = "hour")) |>
+  group_by(timestamp, site) |>
+  summarise(across(everything(), mean))
+
+wells |>
+  head(n = 5) |>
+  kable()
+
+```
+
+### Question 5
+
+Now that our datasets are on the same time-scale, they are compatible with each other, and can be joined. Lets do a couple of small cleaning tasks with the new dataset we're going to make.
+
+a.  Join the datasets by their common variable
+
+b.  Both datasets share a temperature variable. Rename them to specify air temperature and well temperature.
+
+c.  Create a new column `gw_level_ft` by multiplying all observations in the pressure column by 2.31 to get the groundwater level in feet.
+
+```{r}
+#| label: q5
+#| eval: false
+
+water_data <- wells |>
+  left_join(cimis, by = "timestamp") |>
+  rename(well_temp_c = temperature) |>
+  mutate(gw_level_ft = pressure * 2.31)
+
+```
+
+### Question 6
+
+Now that we have our cleaned and joined dataset, let's plot the data and see what we can find!
+
+Create a well-formatted graph in `ggplot` that:
+
+- Displays the time on the x-axis
+- Compares groundwater and precipitation using different colors
+- Creates separate plots for each site
+- Utilizes dual y-axis to show `gw_level` and `precipitation` on each side of the chart.
+- Has appropriate titles for the chart and axis
+
+```{r}
+#| label: q6-plot
+#| eval: false
+
+plot_data <- water_data |>
+  filter(timestamp >= ymd("2025-11-12"),
+         timestamp <= ymd("2026-03-15"))
+
+baselines <- plot_data |>
+  group_by(site) |>
+  summarise(baseline = floor(min(pressure, na.rm = TRUE)) - 0.5,
+            .groups = "drop")
+
+plot_data <- plot_data |>
+  left_join(baselines, by = "site")
+
+scale_factor <- 0.4  
+
+ggplot(plot_data, aes(x = timestamp)) +
+  geom_line(aes(y = baseline + precip_mm * scale_factor),
+           fill = "steelblue", alpha = 0.6) +
+  geom_line(aes(y = pressure),
+            color = "springgreen4", linewidth = 0.5) +
+  facet_wrap(~ site, ncol = 1, scales = "free_y") +
+  scale_y_continuous(
+    name     = "Groundwater Pressure (psi)",
+    sec.axis = sec_axis(~ (. - mean(baselines$baseline)) / scale_factor,
+                        name = "Precipitation (mm/hr)")
+  ) +
+  scale_x_datetime(date_breaks = "1 month",
+                   date_labels = "%b %Y") +
+  theme_minimal() +
+  theme(
+    axis.title.y       = element_text(color = "springgreen4"),
+    axis.text.y        = element_text(color = "springgreen4"),
+    axis.title.y.right = element_text(color = "steelblue"),
+    axis.text.y.right  = element_text(color = "steelblue"),
+    axis.text.x        = element_text(angle = 45, hjust = 1),
+    plot.title         = element_text(size = 11)
+  ) +
+  labs(
+    title = "Storm Response in ABD and CPABD Wells (Wet Season 2025–2026)",
+    x     = "Date"
+  )
+  
+```
+
+In 3–4 sentences underneath your plot, describe what you see. Do precipitation events appear to coincide with rises in well pressure? Are both wells equally responsive, or does one appear to respond faster or more strongly than the other?
+
+## Question 7
+
+Since only the **ABD well** records water quality variables (conductivity, salinity, TDS), build a summary table of water quality at that site.
+
+Using `kable` and `kableExtra`, create a single summary table showing the **mean**, **standard deviation**, **minimum**, and **maximum** of `conductivity`, `salinity`, and `tds` for the ABD well over the full period. Round all values to 2 decimal places and include the units in the column headers.
+
+```{r}
+#| label: q7-summary
+#| eval: false
+
+water_quality <- water_data |>
+  filter(site == "ABDWELL") |>
+  filter(!is.na(conductivity), !is.na(salinity), !is.na(tds)) |>
+  summarise(
+    `Conductivity Mean (µS/cm)` = mean(conductivity),
+    `Conductivity SD`           = sd(conductivity),
+    `Salinity Mean (PSU)`       = mean(salinity),
+    `Salinity SD`               = sd(salinity),
+    `TDS Mean (mg/L)`           = mean(tds),
+    `TDS SD`                    = sd(tds)
+  )
+
+water_quality |>
+  kable(digits = 2, caption = "Water quality summary at the ABD well") |>
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+## Question 8
+
+To compute recharge lag-times, you first need to identify **discrete storm events** in the continuous precipitation record. A storm event is a contiguous period of measurable precipitation, separated from other storms by a minimum number of dry hours.
+
+Write a function `find_storm_events` that accepts three arguments: `precip_df`, `threshold_mm`, and `min_gap_hours` The function should:
+
+a.  Take a tibble with columns `timestamp` and `precip_mm`, a precipitation threshold (mm/hour), and a minimum dry-gap duration (hours).
+
+b.  Identify contiguous "wet" periods where `precip_mm >= threshold_mm`. Two consecutive wet hours separated by fewer than `min_gap_hours` of dry conditions count as the **same** storm.
+
+c.  Return a tibble with one row per storm event and the columns:
+
+    - `storm_id` (a unique integer identifier)
+    - `start_time` (timestamp of the first wet hour)
+    - `end_time` (timestamp of the last wet hour)
+    - `duration_hours` (numeric)
+    - `total_precip_mm` (sum across the event)
+
+Apply your function to the CIMIS record with `threshold_mm = 0.5` and `min_gap_hours = 6`. Report how many storm events were detected.
+
+::: callout-tip
+A clean way to detect contiguous events is to flag wet hours, compute the gap since the previous wet hour, mark a "new storm" whenever the gap exceeds `min_gap_hours`, then `cumsum()` those markers to assign storm IDs. After that, a `group_by(storm_id) |> summarise()` collapses the events into the output tibble.
+:::
+
+```{r}
+
+#| label: q8-storm events
+#| eval: false
+
+find_storm_events <- function(precip_df, threshold_mm, min_gap_hours) {
+  precip_df |>
+    arrange(timestamp) |>
+    filter(precip_mm >= threshold_mm) |>
+    mutate(
+      gap_hours = as.numeric(
+        difftime(timestamp, lag(timestamp), units = "hours")
+      ),
+      new_storm = is.na(gap_hours) | gap_hours > min_gap_hours,
+      storm_id  = cumsum(new_storm)
+    ) |>
+    group_by(storm_id) |>
+    summarise(
+      start_time      = min(timestamp),
+      end_time        = max(timestamp),
+      duration_hours  = as.numeric(difftime(end_time, start_time, units = "hours")),
+      total_precip_mm = sum(precip_mm),
+      .groups         = "drop"
+    )
+}
+
+storms <- find_storm_events(cimis, threshold_mm = 0.5, min_gap_hours = 6)
+
+# reporting the number of events
+nrow(storms)
+
+storms |>
+  head(n = 10) |>
+  kable(digits = 2)
+
+
+```
+
+## Question 9
+
+For each storm event identified in Question 8, we will compute the **recharge lag-time** at each well. Recharge lag-time is the number of hours between the storm's precipitation and the subsequent peak in groundwater pressure.
+
+The function below calculates recharge lag-time for a single storm event at one well by taking one row from the `storms` table, the well data for the site, and a search window in hours. the `compute_lag` function estimates the timing of the storm using the precipitation-weighted mean of the storm’s hourly timestamps, then searches for the maximum groundwater pressure within the specified time window after the storm. It returns the lag-time in hours between the estimated storm time and the peak groundwater pressure.
+
+After defining the function, `purrr::map_dbl()` is used to apply the function across all storm events and both wells. The result is a tibble with one row for each storm-site combination and columns for `storm_id`, `site`, `lag_hours`, and `total_precip_mm`.
+
+Run the function below, then make a scatter plot of `lag_hours` (y) against `total_precip_mm` (x), with one panel per site using the `lag_results` dataset. Add a smooth trend line. **In 2–3 sentences, describe whether larger storms appear to have shorter or longer recharge lags.**
+
+::: callout-tip
+To compute this with `POSIXct` timestamps, convert to numeric (`as.numeric()`), do the weighted mean, then convert back with `as.POSIXct(..., origin = "1970-01-01", tz = "UTC")`.
+:::
+
+```{r}
+#| label: q9-function
+#| eval: false
+
+compute_lag <- function(storm, well_data, cimis, search_hours = 72) {
+  
+  storm_precip <- cimis |>
+    filter(
+      timestamp >= storm$start_time,
+      timestamp <= storm$end_time,
+      precip_mm > 0
+    )
+  
+  if (nrow(storm_precip) == 0 || all(is.na(storm_precip$precip_mm))) {
+    return(NA_real_)
+  }
+  
+  precip_numeric <- weighted.mean(
+    as.numeric(storm_precip$timestamp),
+    w = storm_precip$precip_mm,
+    na.rm = TRUE
+  )
+  
+  precip_time <- as.POSIXct(
+    precip_numeric,
+    origin = "1970-01-01",
+    tz = "UTC"
+  )
+  
+  search_window <- well_data |>
+    filter(
+      timestamp >= precip_time,
+      timestamp <= precip_time + hours(search_hours)
+    )
+  
+  if (nrow(search_window) == 0 || all(is.na(search_window$pressure))) {
+    return(NA_real_)
+  }
+  
+  peak_time <- search_window$timestamp[which.max(search_window$pressure)]
+  
+  as.numeric(difftime(peak_time, precip_time, units = "hours"))
+}
+
+lag_results <- expand_grid(
+  storm_id = storms$storm_id,
+  site = unique(water_data$site)
+) |>
+  left_join(storms, by = "storm_id") |>
+  mutate(
+    lag_hours = pmap_dbl(
+      list(storm_id, site),
+      function(sid, s) {
+        storm_row <- storms |> filter(storm_id == sid)
+        well_dat <- water_data |> filter(site == s)
+
+        compute_lag(
+          storm = storm_row,
+          well_data = well_dat,
+          cimis = cimis,
+          search_hours = 72
+        )
+      }
+    )
+  ) |>
+  filter(!is.na(lag_hours))
+```
+
+```{r}
+#| label: q9-graph
+#| eval: false
+
+# Scatter plot 
+ggplot(lag_results, aes(x = total_precip_mm, y = lag_hours)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  facet_wrap(~ site) +
+  labs(
+    title = "Recharge lag-time vs. storm size",
+    x     = "Total storm precipitation (mm)",
+    y     = "Lag (hours)"
+  ) +
+  theme_minimal()
+
+```
+
+## References
+
+### R packages
+
+- Wickham H. et al. (2019). Welcome to the tidyverse. *Journal of Open Source Software*, 4(43), 1686. <https://doi.org/10.21105/joss.01686>
+- Müller K. (2020). *here: A Simpler Way to Find Your Files.* R package. <https://here.r-lib.org/>
+- Firke S. (2023). *janitor: Simple Tools for Examining and Cleaning Dirty Data.* R package. <https://github.com/sfirke/janitor>
+- Grolemund G. and Wickham H. (2011). Dates and Times Made Easy with lubridate. *Journal of Statistical Software*, 40(3), 1–25. <https://doi.org/10.18637/jss.v040.i03>
+
+### Other Sources
+
+- Data Analytic. (2022). *When to use double axis for better visualization of dates in GGPLOT charts*. <https://www.youtube.com/watch?v=e9IcAEaxDB4&list=WL&index=83>
+
+### Background reading
+
+- Healy R. W. (2010). *Estimating Groundwater Recharge.* Cambridge University Press. Reference for the conceptual framing of precipitation-to-recharge lag.
+
+### AI Use
+
+Portions of this lab were developed with assistance from Claude. Specifically:
+
+- **Data description table formatting.** Claude suggested the Markdown table syntax in the "Data Content" section for presenting the three datasets, their file names, sampling intervals, and variables of interest. Prompt: "How would I format a table for these three csv files and their variables?"
+- **Quarto callout blocks.** Claude provided the syntax and structure for the `:::` callout-note and callout-tip blocks used throughout the lab (e.g., the Cal Poly authentication note in the data download section and the `stopifnot()` tip in Question 1). Prompt: "How to properly integrate a call out or advice block"
+- **OneDrive download link integration.** Claude advised on the Markdown link syntax used to embed the OneDrive download URL for `stenner_recharge_data.zip` and on framing the access-restriction warning. Prompt: "Is there a way to embed a onedrive link into a qmd and what are the restrictions to that?"
+
+All R code, analysis design, and decisions were authored by Lana Moore and Jack Cryan.
