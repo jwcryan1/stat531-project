@@ -371,6 +371,7 @@ water_quality <- water_data |>
   )
 
 water_quality |>
+  head() |>
   kable(digits = 2, caption = "Water quality summary at the ABD well") |>
   kable_styling(bootstrap_options = c("striped", "hover"))
 ```
